@@ -65,6 +65,7 @@ function Log {
 
     Add-Content -LiteralPath $Global:sLogPath -Value $logEntry -Encoding UTF8
     Write-Verbose "$sPrefix $sMsg"
+
     Write-Host $ErrorRecord.ToString()
     Write-Host
 }
@@ -74,7 +75,7 @@ function Get-SessionLockPath {
     $sHtml = Get-Content -LiteralPath $Global:sHtmlPath -Raw
     $sPayload = "$sHtml|$bApplyOverlays"
 
-    $SHA = [System.Security.Cryptography.SHA256]::Create()
+    $SHA   = [System.Security.Cryptography.SHA256]::Create()
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($sPayload)
     $token = ($SHA.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
 
@@ -240,7 +241,7 @@ function Invoke-MemoryDownload ([PSCustomObject]$memory, [int]$nMaxAttempts = 3)
         try {
             $null = New-Item -ItemType Directory -Path $sDownloadPath -Force -ErrorAction Stop
         } catch {
-            throw "Unable to create download directory '$sDownloadPath': $($_.Exception.Message)"
+            throw "Unable to create download directory '$sDownloadPath'"
         }
     }
 
@@ -276,7 +277,7 @@ function Invoke-MemoryDownload ([PSCustomObject]$memory, [int]$nMaxAttempts = 3)
             if (Test-Path $sLocalPath) { Remove-Item $sLocalPath -Force -ErrorAction SilentlyContinue }
 
             if ($nRetry -ge $nMaxAttempts) {
-                throw "Maximum download attempts reached for memory $($memory.BaseName): $($_.Exception.Message)"
+                throw "Maximum download attempts reached for memory $($memory.BaseName)"
             }
 
             Write-Verbose "Retrying download for $($memory.BaseName) (attempt $nRetry of $nMaxAttempts)"
@@ -288,7 +289,7 @@ function Invoke-MemoryDownload ([PSCustomObject]$memory, [int]$nMaxAttempts = 3)
     try {
         Rename-Item -Path $memory.LocalPath -NewName $sLocalPath -Force -ErrorAction Stop
     } catch {
-        throw "Failed to finalize download for memory $($memory.BaseName): $($_.Exception.Message)"
+        throw "Failed to finalize download for memory $($memory.BaseName)"
     }
 
     $memory.LocalPath = $sLocalPath
@@ -307,7 +308,7 @@ function Invoke-MemoryExtract ([PSCustomObject]$memory) {
     try {
         Expand-Archive -Path $sZipPath -DestinationPath $sDownloadPath -Force -ErrorAction Stop
     } catch {
-        throw "Failed to extract archive for memory $($memory.BaseName): $($_.Exception.Message)"
+        throw "Failed to extract archive for memory $($memory.BaseName)"
     }
 
     $arrFiles = Get-ChildItem -Path $sDownloadPath -File | Where-Object {
@@ -336,7 +337,7 @@ function Invoke-MemoryExtract ([PSCustomObject]$memory) {
         try {
             Rename-Item -LiteralPath $file.FullName -NewName $sFileName -Force -ErrorAction Stop
         } catch {
-            throw "Failed to organize extracted files for memory $($memory.BaseName): $($_.Exception.Message)"
+            throw "Failed to organize extracted files for memory $($memory.BaseName)"
         }
     }
 
@@ -357,6 +358,8 @@ function Invoke-MemoryCompose ([PSCustomObject]$memory) {
     $sFinalPath    = Join-Path $sDownloadPath "$sBaseName.$sExt"
 
     if (!(Test-Path $sOverlayPath)) {
+        $memory.Status = "extract_inprogress"
+        Save-Session # on retry will clean up and download again
         throw "No overlay found for image '$sOriginalPath'"
     }
 
@@ -395,7 +398,7 @@ function Invoke-MemoryCompose ([PSCustomObject]$memory) {
             throw "Overlay composition command failed with exit code $LASTEXITCODE."
         }
     } catch {
-        throw "Failed to compose overlay for memory $($memory.BaseName): $($_.Exception.Message)"
+        throw "Failed to compose overlay for memory $($memory.BaseName)"
     }
 
     if ($memory.LocalPath -ne $sFinalPath) { $memory.LocalPath = $sFinalPath }
@@ -405,7 +408,7 @@ function Invoke-MemoryCompose ([PSCustomObject]$memory) {
             Remove-Item -LiteralPath $sOverlayPath -Force -ErrorAction Stop
             Remove-Item -LiteralPath $sOriginalPath -Force -ErrorAction Stop
         } catch {
-            throw "Failed to clean up intermediate files for memory $($memory.BaseName): $($_.Exception.Message)"
+            throw "Failed to clean up intermediate files for memory $($memory.BaseName)"
         }
     }
 
@@ -427,7 +430,7 @@ function Skip-MemoryCompose ([PSCustomObject]$memory) {
     try {
         Copy-Item -LiteralPath $sOriginalPath -Destination $sFinalPath -Force -ErrorAction Stop
     } catch {
-        throw "Failed to copy original file for memory $($memory.BaseName): $($_.Exception.Message)"
+        throw "Failed to copy original file for memory $($memory.BaseName)"
     }
 
     $memory.LocalPath = $sFinalPath
@@ -503,7 +506,7 @@ function Invoke-ApplyExifTags ([PSCustomObject]$memory) {
             }
         }
     } catch {
-        throw "Failed to apply metadata for memory $($memory.BaseName): $($_.Exception.Message)"
+        throw "Failed to apply metadata for memory $($memory.BaseName)"
     }
 
     $memory.Status = "tagging_done"
@@ -525,7 +528,7 @@ function Invoke-CopyToOutput ([PSCustomObject]$memory) {
     try {
         Copy-Item -Path $sLocalPath -Destination $sFinalPath -Force -ErrorAction Stop
     } catch {
-        throw "Failed to copy memory $($memory.BaseName) to output: $($_.Exception.Message)"
+        throw "Failed to copy memory $($memory.BaseName) to output"
     }
 
     $memory.LocalPath = $sFinalPath
@@ -561,7 +564,7 @@ function Invoke-Cleanup ([PSCustomObject]$memory) {
         $memory.Status = "done"
         Save-Session
     } catch {
-        throw "Failed to clean up temporary files for memory $($memory.BaseName): $($_.Exception.Message)"
+        throw "Failed to clean up temporary files for memory $($memory.BaseName)"
     }
 }
 
