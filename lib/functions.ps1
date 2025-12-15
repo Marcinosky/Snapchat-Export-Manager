@@ -146,24 +146,27 @@ function Initialize-MemoryObject ($htRow) {
 
 function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
-    $sDownloadPath = $Global:sDownloadPath
+    $sDownloadPath  = $Global:sDownloadPath
+    $sOutputPath    = $Global:sOutputPath
+
     $sBaseName     = $memory.BaseName
     $sLocalPath    = $memory.LocalPath
     $sStatus       = $memory.Status
     $sExt          = $memory.Format
 
-    if ($sStatus -eq 'download_inprogress') {
+    $sDestinationPath = Join-Path $sOutputPath "$sBaseName.$sExt"
+    if (Test-Path $sDestinationPath) {
+        $memory.Status = 'Done'
+        $memory.LocalPath = $sDestinationPath
+        Save-Session
+        return
+    }   # quick hack, will redesign things
+
+    if ($sStatus -eq 'download_inprogress' -or $sStatus -eq 'download_failed') {
 
         if ($sLocalPath -and (Test-Path -LiteralPath $sLocalPath)) {
             Remove-Item -LiteralPath $sLocalPath -Force -ErrorAction SilentlyContinue
         }
-
-        Restart-MemoryDownload $memory
-        $nRestarted++
-        return
-    }
-
-    if ($sStatus -eq 'download_failed') {
 
         Restart-MemoryDownload $memory
         $nRestarted++
