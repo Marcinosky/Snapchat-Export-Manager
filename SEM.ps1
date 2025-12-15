@@ -85,10 +85,6 @@ if (Test-Path $sJsonPath) {
 if ($Global:arrMemories.Count -gt 0) {
     $nRestarted = 0
 
-    Get-ChildItem -LiteralPath $sDownloadPath -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match "(-main\.jpg|-main\.mp4|-overlay\.png)"  } |
-        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
-
     foreach ($memory in $arrMemories) {
         try { 
             Restart-MemoryObjects $memory 

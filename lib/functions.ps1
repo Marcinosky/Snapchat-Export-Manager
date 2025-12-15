@@ -41,9 +41,6 @@ function Log {
 
         if ($ErrorRecord.CategoryInfo) {
             $arrDetails += "Category: $($ErrorRecord.CategoryInfo.Category)"
-            if ($ErrorRecord.CategoryInfo.TargetName) {
-                $arrDetails += "Target: $($ErrorRecord.CategoryInfo.TargetName)"
-            }
         }
 
         if ($ErrorRecord.InvocationInfo) {
@@ -177,7 +174,7 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
         $sZipPath = Join-Path $sDownloadPath "$sBaseName.zip"
         if (Test-Path $sZipPath) {
-            Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $sZipPath -Force -ErrorAction SilentlyContinue
         }
 
         Restart-MemoryDownload $memory
@@ -327,6 +324,10 @@ function Invoke-MemoryExtract ([PSCustomObject]$memory) {
     $sDownloadPath = $Global:sDownloadPath
     $sZipPath      = $memory.LocalPath
     $sBaseName     = $memory.BaseName
+
+    Get-ChildItem -LiteralPath $sDownloadPath -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "(-main\.jpg|-main\.mp4|-overlay\.png)"  } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
 
     try {
         Expand-Archive -Path $sZipPath -DestinationPath $sDownloadPath -Force -ErrorAction Stop
