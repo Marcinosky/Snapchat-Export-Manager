@@ -22,20 +22,35 @@ You first need to actually [request your memory export from snapchat](https://he
 Snapchat Export Manager relies on the following third-party tools and libraries:
 
 - **ffmpeg**  
-  Used for video processing and metadata tagging.  
-  Installed separately by the user (winget dependency).  
+  Used for video processing and metadata read/write.  
+  Installed separately by the user*  
   License: GPL  
   https://ffmpeg.org/
 
+- **ImageMagick**  
+  Used for image composition and resizing.  
+  Installed separately by the user*  
+  License: Apache License 2.0  
+  https://imagemagick.org/ 
+
+  *winget recommended
+
 - **exiv2**  
   Used for reading and writing EXIF/XMP metadata in images.  
-  Bundled  
-  License: GPLv2+  
-  Source and full license: see NOTICE.md and LICENSE-GPLv2.txt  
+  Bundled binary distribution.  
+  - Version: `0.28.7` (MSVC 2022, x64)  
+  - Source: https://github.com/Exiv2/exiv2/releases/tag/v0.28.7
+  - SHA: `2e5978b2f53eed1c557e5b5dd5c22d8b44348f5ec8183dab05d25398259c2274`
+  - License: GPLv2+ (see `NOTICE.md`) 
+
+  Full license text included in `LICENSE-GPLv2.txt`.  
   https://exiv2.org/
 
 - **HtmlAgilityPack**  
   HTML parsing library used to process Snapchat export files.  
   Bundled  
-  License: MIT  
+  - Version: `1.12.4`  
+  - Source: https://github.com/zzzprojects/html-agility-pack/releases/tag/v1.12.4  
+  - License: MIT  
+
   https://html-agility-pack.net/
