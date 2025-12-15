@@ -149,11 +149,11 @@ function Initialize-MemoryObject ($htRow) {
 
 function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
-    $sDownloadDir = $Global:sDownloadPath
-    $sBaseName    = $memory.BaseName
-    $sLocalPath   = $memory.LocalPath
-    $sStatus      = $memory.Status
-    $sExt         = $memory.Format
+    $sDownloadPath = $Global:sDownloadPath
+    $sBaseName     = $memory.BaseName
+    $sLocalPath    = $memory.LocalPath
+    $sStatus       = $memory.Status
+    $sExt          = $memory.Format
 
     if ($sStatus -eq 'download_inprogress') {
 
@@ -175,10 +175,9 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
     if ($sStatus -eq 'extract_inprogress') {
 
-        if ($sDownloadDir -and (Test-Path -LiteralPath $sDownloadDir)) {
-            Get-ChildItem -LiteralPath $sDownloadDir -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match "($sBaseName\.|-main\.jpg|-main\.mp4|-overlay\.png)"  } |
-                ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        $sZipPath = Join-Path $sDownloadPath "$sBaseName.zip"
+        if (Test-Path $sZipPath) {
+            Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
         }
 
         Restart-MemoryDownload $memory
