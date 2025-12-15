@@ -1,9 +1,17 @@
 function Save-Session {
+    $sTempPath = "$sJsonPath.tmp"
     try {
-        $arrMemories | ConvertTo-Json -Depth 3 -ErrorAction Stop |
-            Set-Content -LiteralPath $sJsonPath -Encoding UTF8 -ErrorAction Stop
+        $arrMemories |
+            Where-Object { $_.Status -ne 'done' } |
+            ConvertTo-Json -Depth 3 -ErrorAction Stop |
+            Set-Content -LiteralPath $sTempPath -Encoding UTF8 -ErrorAction Stop
+
+        Move-Item -LiteralPath $sTempPath -Destination $sJsonPath -Force -ErrorAction Stop
     }
     catch {
+        if (Test-Path $sTempPath) {
+            Remove-Item $sTempPath -Force -ErrorAction SilentlyContinue
+        }
         Log -Context "Save-Session" -ErrorRecord $_
     }
 }
