@@ -32,10 +32,6 @@ Target directory where processed media will be written
 - `MemoriesHtmlPath`
 Path to the Snapchat memories_history.html export file
 
-Example
-
->.\SEM.ps1 C:\SEM\OUT "C:\SEM\memories_history.html" -ApplyOverlays
-
 Optional switches
 
 - `-ApplyOverlays`
@@ -46,6 +42,10 @@ Prevents cleanup if you want to apply overlays but wish to keep the original med
 
 - `-Unlock`
 Lets rerun script with same arguments after complete export
+
+Example
+
+>.\SEM.ps1 C:\SEM\OUT "C:\SEM\memories_history.html" -ApplyOverlays -KeepOriginalFiles
 
 ### Session handling and resume
 
