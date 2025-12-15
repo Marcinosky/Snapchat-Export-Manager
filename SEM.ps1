@@ -41,8 +41,6 @@ try {
         New-Item -ItemType Directory -Path $sOutputPath -ErrorAction Stop | Out-Null
     }
 
-    Test-SemOutputDirectory $sOutputPath
-
     # --- input html ---
     $DOC = New-Object HtmlAgilityPack.HtmlDocument
     $sHtmlContent = Get-Content -LiteralPath $Global:sHtmlPath -Raw
@@ -95,6 +93,8 @@ if ($Global:arrMemories.Count -gt 0) {
     Write-Host "Session restored from existing JSON file. Downloads restarted: $nRestarted"
 
 } else {
+
+    Test-SemOutputDirectory $sOutputPath
 
     $htBody = $DOC.DocumentNode.SelectSingleNode("//tbody")
     $htRows = $htBody.SelectNodes("./tr")
