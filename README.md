@@ -1,3 +1,6 @@
+## WARNING - WIP
+I thought it's semi ready and published it prematurely, i only now got my re-requested data with links alive and a 700 memory export broke half way throgh and didn't clean up like it should've, will fix asap
+
 # Snapchat-Export-Manager
 SEM lets you download and process your Snapchat Memories so that they're ready to use and share out-the-box.
 
