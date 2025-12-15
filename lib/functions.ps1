@@ -1,12 +1,18 @@
 function Save-Session {
+    $sTempPath = "$sJsonPath.tmp"
     try {
-        $arrMemories | ConvertTo-Json -Depth 3 -ErrorAction Stop |
-            Set-Content -LiteralPath $sJsonPath -Encoding UTF8 -ErrorAction Stop
-        return $true
+        $arrMemories |
+            Where-Object { $_.Status -ne 'done' } |
+            ConvertTo-Json -Depth 3 -ErrorAction Stop |
+            Set-Content -LiteralPath $sTempPath -Encoding UTF8 -ErrorAction Stop
+
+        Move-Item -LiteralPath $sTempPath -Destination $sJsonPath -Force -ErrorAction Stop
     }
     catch {
+        if (Test-Path $sTempPath) {
+            Remove-Item $sTempPath -Force -ErrorAction SilentlyContinue
+        }
         Log -Context "Save-Session" -ErrorRecord $_
-        return $false
     }
 }
 
@@ -35,9 +41,6 @@ function Log {
 
         if ($ErrorRecord.CategoryInfo) {
             $arrDetails += "Category: $($ErrorRecord.CategoryInfo.Category)"
-            if ($ErrorRecord.CategoryInfo.TargetName) {
-                $arrDetails += "Target: $($ErrorRecord.CategoryInfo.TargetName)"
-            }
         }
 
         if ($ErrorRecord.InvocationInfo) {
@@ -143,13 +146,23 @@ function Initialize-MemoryObject ($htRow) {
 
 function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
-    $sDownloadDir = $Global:sDownloadPath
-    $sBaseName    = $memory.BaseName
-    $sLocalPath   = $memory.LocalPath
-    $sStatus      = $memory.Status
-    $sExt         = $memory.Format
+    $sDownloadPath  = $Global:sDownloadPath
+    $sOutputPath    = $Global:sOutputPath
 
-    if ($sStatus -eq 'download_inprogress') {
+    $sBaseName     = $memory.BaseName
+    $sLocalPath    = $memory.LocalPath
+    $sStatus       = $memory.Status
+    $sExt          = $memory.Format
+
+    $sDestinationPath = Join-Path $sOutputPath "$sBaseName.$sExt"
+    if (Test-Path $sDestinationPath) {
+        $memory.Status = 'Done'
+        $memory.LocalPath = $sDestinationPath
+        Save-Session
+        return
+    }   # quick hack, will redesign things
+
+    if ($sStatus -eq 'download_inprogress' -or $sStatus -eq 'download_failed') {
 
         if ($sLocalPath -and (Test-Path -LiteralPath $sLocalPath)) {
             Remove-Item -LiteralPath $sLocalPath -Force -ErrorAction SilentlyContinue
@@ -157,27 +170,19 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
         Restart-MemoryDownload $memory
         $nRestarted++
-        continue
-    }
-
-    if ($sStatus -eq 'download_failed') {
-
-        Restart-MemoryDownload $memory
-        $nRestarted++
-        continue
+        return
     }
 
     if ($sStatus -eq 'extract_inprogress') {
 
-        if ($sDownloadDir -and (Test-Path -LiteralPath $sDownloadDir)) {
-            Get-ChildItem -LiteralPath $sDownloadDir -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match "($sBaseName\.|-main\.jpg|-main\.mp4|-overlay\.png)"  } |
-                ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+        $sZipPath = Join-Path $sDownloadPath "$sBaseName.zip"
+        if (Test-Path $sZipPath) {
+            Remove-Item -LiteralPath $sZipPath -Force -ErrorAction SilentlyContinue
         }
 
         Restart-MemoryDownload $memory
         $nRestarted++
-        continue
+        return
     }
 
     if (($sStatus -eq 'compose_inprogress') -or ($sStatus -eq 'compose_skipping')) {
@@ -189,7 +194,7 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
         $memory.LocalPath = $null
         $memory.Status = 'extract_done'
         Save-Session
-        continue
+        return
     }
 
     if ($sStatus -eq 'tagging_inprogress') {
@@ -204,7 +209,7 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
 
         $memory.Status = 'compose_done'
         Save-Session
-        continue
+        return
     }
 
     if ($sStatus -eq 'output_inprogress') {
@@ -216,7 +221,7 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
         $memory.Status = 'tagging_done'
         $memory.LocalPath = Join-Path $sDownloadPath "$sBaseName.$sExt"
         Save-Session
-        continue
+        return
     }
 
     if ($sStatus -eq 'cleanup_inprogress') {
@@ -226,8 +231,23 @@ function Restart-MemoryObjects ([PSCustomObject]$memory) {
             $memory.Status = 'done'
         }
         Save-Session
-        continue
+        return
     }
+
+    $arrAllowedStatus = @(
+        'download_pending',
+        'extract_done',
+        'compose_done',
+        'tagging_done',
+        'download_done',
+        'output_done',
+        'done'
+    )
+
+    if ($sStatus -notin $arrAllowedStatus) {
+        throw "Unrecognized memory status '$sStatus' for memory $($memory.BaseName)"
+    }
+    
 }
 
 function Invoke-MemoryDownload ([PSCustomObject]$memory, [int]$nMaxAttempts = 3) {
@@ -268,12 +288,15 @@ function Invoke-MemoryDownload ([PSCustomObject]$memory, [int]$nMaxAttempts = 3)
             if ($memory.Format -eq 'unknown') {
                 throw "Unrecognized content type for memory download."
             }
-            $memory.Status = 'download_done'
 
+            $memory.Status = 'download_done'
             Save-Session
             break
         }
         catch {
+            $memory.Status = 'download_failed'
+            Save-Session
+
             if (Test-Path $sLocalPath) { Remove-Item $sLocalPath -Force -ErrorAction SilentlyContinue }
 
             if ($nRetry -ge $nMaxAttempts) {
@@ -304,6 +327,10 @@ function Invoke-MemoryExtract ([PSCustomObject]$memory) {
     $sDownloadPath = $Global:sDownloadPath
     $sZipPath      = $memory.LocalPath
     $sBaseName     = $memory.BaseName
+
+    Get-ChildItem -LiteralPath $sDownloadPath -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "(-main\.jpg|-main\.mp4|-overlay\.png)"  } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
 
     try {
         Expand-Archive -Path $sZipPath -DestinationPath $sDownloadPath -Force -ErrorAction Stop
@@ -363,42 +390,36 @@ function Invoke-MemoryCompose ([PSCustomObject]$memory) {
         throw "No overlay found for image '$sOriginalPath'"
     }
 
-    switch($memory.MediaType) {
-        'Image' {
-            $w = magick identify -format "%w" $sOriginalPath
-            $h = magick identify -format "%h" $sOriginalPath
-            $cmd = @(
-                "magick",
-                $sOriginalPath,
-                $sOverlayPath,
-                "-resize", "${w}x${h}!", 
-                "-compose over",
-                "-composite",
-                $sFinalPath
-            ) -join " "
-         }
-        'Video' { 
-            $filter = "[1:v][0:v]scale2ref=w=iw:h=ih[ovr][base];[base][ovr]overlay=0:0"
-            $cmd = @(
-                "ffmpeg",
-                "-y",
-                "-loglevel", "error",
-                "-hide_banner",
-                "-i", $sOriginalPath,
-                "-i", $sOverlayPath,
-                "-filter_complex", $filter,
-                "-c:a", "copy",
-                $sFinalPath
-            ) -join " "
-         }
-    }
     try {
-        cmd.exe /c $cmd | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Overlay composition command failed with exit code $LASTEXITCODE."
+        switch($memory.MediaType) {
+            'Image' {
+                $sWidth = (& magick identify -format "%w" $sOriginalPath).Trim()
+                $sHeight = (& magick identify -format "%h" $sOriginalPath).Trim()
+                & magick `
+                    $sOriginalPath `
+                    $sOverlayPath `
+                    -resize "${sWidth}x${sHeight}!" `
+                    -compose over `
+                    -composite `
+                    $sFinalPath
+            }
+            'Video' { 
+                $sFilter = "[1:v][0:v]scale2ref=w=iw:h=ih[ovr][base];[base][ovr]overlay=0:0"
+                & ffmpeg `
+                    -y `
+                    -loglevel error `
+                    -hide_banner `
+                    -i $sOriginalPath `
+                    -i $sOverlayPath `
+                    -filter_complex $sFilter `
+                    -c:a copy `
+                    $sFinalPath
+            }
         }
     } catch {
         throw "Failed to compose overlay for memory $($memory.BaseName)"
+    } if ( $LASTEXITCODE -ne 0 ) {
+        throw "Overlay composition failed with exit code $LASTEXITCODE."
     }
 
     if ($memory.LocalPath -ne $sFinalPath) { $memory.LocalPath = $sFinalPath }
@@ -465,21 +486,17 @@ function Invoke-ApplyExifTags ([PSCustomObject]$memory) {
                 $sTimestamp  = $memory.Timestamp.ToString("yyyy:MM:dd HH:mm:ss")
 
                 & $sExivPath `
-                -M"set Exif.Photo.DateTimeOriginal $sTimestamp" `
-                -M"set Exif.Photo.DateTimeDigitized $sTimestamp" `
-                -M"set Exif.Image.Software Snapchat" `
-                -M"set Exif.Image.DateTime $sTimestamp" `
-                -M"set Exif.GPSInfo.GPSLatitude $dmsLat" `
-                -M"set Exif.GPSInfo.GPSLongitude $dmsLon" `
-                -M"set Exif.GPSInfo.GPSLatitudeRef $($arrLatRef[0])" `
-                -M"set Exif.GPSInfo.GPSLongitudeRef $($arrLonRef[0])" `
-                -M"set Xmp.xmp.CreatorTool Snapchat Export Manager" `
-                -M"set Xmp.dc.source Snapchat" `
-                "$sLocalPath"
-
-                if ($LASTEXITCODE -ne 0) {
-                    throw "EXIF tool returned exit code $LASTEXITCODE."
-                }
+                    -M"set Exif.Photo.DateTimeOriginal $sTimestamp" `
+                    -M"set Exif.Photo.DateTimeDigitized $sTimestamp" `
+                    -M"set Exif.Image.Software Snapchat" `
+                    -M"set Exif.Image.DateTime $sTimestamp" `
+                    -M"set Exif.GPSInfo.GPSLatitude $dmsLat" `
+                    -M"set Exif.GPSInfo.GPSLongitude $dmsLon" `
+                    -M"set Exif.GPSInfo.GPSLatitudeRef $($arrLatRef[0])" `
+                    -M"set Exif.GPSInfo.GPSLongitudeRef $($arrLonRef[0])" `
+                    -M"set Xmp.xmp.CreatorTool Snapchat Export Manager" `
+                    -M"set Xmp.dc.source Snapchat" `
+                    $sLocalPath
             }
             'mp4' {
                 $sTempPath  = Join-Path $sDownloadPath "$sBaseName`_tmp.$sExt"
@@ -487,26 +504,26 @@ function Invoke-ApplyExifTags ([PSCustomObject]$memory) {
                 $sLocation  = "{0}{1}{2}{3}/" -f $arrLatRef[1], $sLatAbs, $arrLonRef[1], $sLonAbs
 
                 & ffmpeg `
-                -y `
-                -loglevel error `
-                -hide_banner `
-                -i "$sLocalPath" `
-                -metadata "creation_time=$sTimestamp" `
-                -metadata "location=$sLocation" `
-                -metadata "comment=Source: Snapchat" `
-                -metadata "description=Exported with Snapchat Export Manager" `
-                -codec copy `
-                "$sTempPath"
+                    -y `
+                    -loglevel error `
+                    -hide_banner `
+                    -i $sLocalPath `
+                    -metadata "creation_time=$sTimestamp" `
+                    -metadata "location=$sLocation" `
+                    -metadata "comment=Source: Snapchat" `
+                    -metadata "description=Exported with Snapchat Export Manager" `
+                    -codec copy `
+                    $sTempPath
 
-                if ($LASTEXITCODE -ne 0) {
-                    throw "ffmpeg returned exit code $LASTEXITCODE."
+                if ($LASTEXITCODE -eq 0) {
+                    Move-Item -Force -LiteralPath $sTempPath -Destination $sLocalPath -ErrorAction Stop
                 }
-
-                Move-Item -Force -LiteralPath $sTempPath -Destination $sLocalPath -ErrorAction Stop
             }
         }
     } catch {
         throw "Failed to apply metadata for memory $($memory.BaseName)"
+    } if ($LASTEXITCODE -ne 0) {
+        throw "Exif tagging returned exit code $LASTEXITCODE."
     }
 
     $memory.Status = "tagging_done"

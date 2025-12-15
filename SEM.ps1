@@ -58,7 +58,7 @@ try {
     
 }
 catch {
-    Log -Context "$Init" -ErrorRecord $_
+    Log -Context "Init" -ErrorRecord $_
     exit 1
 }
 
@@ -84,9 +84,15 @@ if (Test-Path $sJsonPath) {
 
 if ($Global:arrMemories.Count -gt 0) {
     $nRestarted = 0
-    foreach ($memory in $arrMemories) {
 
-        Restart-MemoryObjects $memory
+    foreach ($memory in $arrMemories) {
+        try { 
+            Restart-MemoryObjects $memory 
+        }
+        catch {
+            Log -Memory $memory -Context "SessionRestore" -ErrorRecord $_
+            continue
+        }
         $nRestarted++
     }
 
